@@ -3,412 +3,461 @@ import pandas as pd
 import numpy as np
 import joblib
 import json
-from datetime import datetime
+import io
 
-# ============================================================
-# KONFIGURASI HALAMAN
-# ============================================================
+# ─── Page config ────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Klasifikasi Kelayakan Air Minum",
+    page_title="AquaCheck — Klasifikasi Kualitas Air",
     page_icon="💧",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-# ============================================================
-# LOAD MODEL & KONFIGURASI
-# ============================================================
+# ─── Custom CSS ─────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+
+    /* Sidebar */
+    [data-testid="stSidebar"] {
+        background: #0f172a;
+    }
+    [data-testid="stSidebar"] * { color: #e2e8f0 !important; }
+    [data-testid="stSidebar"] .stRadio label { color: #94a3b8 !important; }
+    [data-testid="stSidebar"] .stRadio [data-testid="stMarkdownContainer"] p {
+        color: #e2e8f0 !important;
+    }
+
+    /* Main area */
+    .main .block-container { padding-top: 2rem; padding-bottom: 3rem; }
+
+    /* Hero banner */
+    .hero-banner {
+        background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 50%, #075985 100%);
+        border-radius: 16px;
+        padding: 2.2rem 2.5rem;
+        margin-bottom: 2rem;
+        display: flex;
+        align-items: center;
+        gap: 1.2rem;
+    }
+    .hero-banner h1 {
+        color: #fff !important;
+        font-size: 2rem !important;
+        font-weight: 700 !important;
+        margin: 0 !important;
+        line-height: 1.2;
+    }
+    .hero-banner p { color: #bae6fd !important; margin: 0.3rem 0 0; font-size: 0.95rem; }
+
+    /* Cards */
+    .card {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 1.4rem 1.6rem;
+        margin-bottom: 1rem;
+    }
+    .card-title {
+        font-weight: 600;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #64748b;
+        margin-bottom: 0.4rem;
+    }
+    .card-value {
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    /* Result banners */
+    .result-layak {
+        background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+        border-left: 5px solid #16a34a;
+        border-radius: 10px;
+        padding: 1.4rem 1.6rem;
+        margin: 1.2rem 0;
+    }
+    .result-layak h2 { color: #15803d !important; margin: 0 !important; font-size: 1.5rem !important; }
+    .result-layak p  { color: #166534 !important; margin: 0.3rem 0 0; font-size: 0.9rem; }
+
+    .result-tidak {
+        background: linear-gradient(135deg, #fef2f2, #fecaca);
+        border-left: 5px solid #dc2626;
+        border-radius: 10px;
+        padding: 1.4rem 1.6rem;
+        margin: 1.2rem 0;
+    }
+    .result-tidak h2 { color: #b91c1c !important; margin: 0 !important; font-size: 1.5rem !important; }
+    .result-tidak p  { color: #7f1d1d !important; margin: 0.3rem 0 0; font-size: 0.9rem; }
+
+    /* Anomaly tag */
+    .anomaly-tag {
+        display: inline-block;
+        background: #fef9c3;
+        border: 1px solid #fde047;
+        border-radius: 6px;
+        padding: 0.35rem 0.75rem;
+        font-size: 0.82rem;
+        font-weight: 500;
+        color: #713f12;
+        margin: 0.2rem;
+    }
+
+    /* Metric row */
+    .metric-row {
+        display: flex;
+        gap: 0.8rem;
+        flex-wrap: wrap;
+        margin-bottom: 1rem;
+    }
+    .metric-pill {
+        background: #e0f2fe;
+        border-radius: 20px;
+        padding: 0.3rem 0.9rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #0369a1;
+    }
+
+    /* Section label */
+    .section-label {
+        font-size: 0.78rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #94a3b8;
+        margin-bottom: 0.6rem;
+    }
+
+    /* Divider */
+    .divider { border: none; border-top: 1px solid #e2e8f0; margin: 1.4rem 0; }
+
+    /* Table styling */
+    .stDataFrame { border-radius: 10px; overflow: hidden; }
+
+    /* Number input labels */
+    label { font-size: 0.85rem !important; font-weight: 500 !important; color: #334155 !important; }
+
+    /* Warning disclaimer */
+    .disclaimer {
+        background: #fffbeb;
+        border: 1px solid #fcd34d;
+        border-radius: 8px;
+        padding: 0.8rem 1rem;
+        font-size: 0.8rem;
+        color: #78350f;
+        margin-top: 1.5rem;
+    }
+
+    /* Hide Streamlit footer */
+    footer { visibility: hidden; }
+</style>
+""", unsafe_allow_html=True)
+
+# ─── Konstanta ───────────────────────────────────────────────────────────────
+FEATURES = [
+    'ph', 'Hardness', 'Solids', 'Chloramines', 'Sulfate',
+    'Conductivity', 'Organic_carbon', 'Trihalomethanes', 'Turbidity'
+]
+
+FEATURE_META = {
+    'ph':              {'label': 'pH',              'unit': '',       'min': 0.0,   'max': 14.0,    'default': 7.0,    'step': 0.01},
+    'Hardness':        {'label': 'Hardness',        'unit': 'mg/L',   'min': 0.0,   'max': 800.0,   'default': 196.0,  'step': 0.1},
+    'Solids':          {'label': 'Solids (TDS)',     'unit': 'mg/L',   'min': 0.0,   'max': 60000.0, 'default': 20000.0,'step': 1.0},
+    'Chloramines':     {'label': 'Chloramines',      'unit': 'mg/L',   'min': 0.0,   'max': 15.0,    'default': 7.0,    'step': 0.01},
+    'Sulfate':         {'label': 'Sulfate',          'unit': 'mg/L',   'min': 0.0,   'max': 600.0,   'default': 333.0,  'step': 0.1},
+    'Conductivity':    {'label': 'Conductivity',     'unit': 'μS/cm',  'min': 0.0,   'max': 800.0,   'default': 426.0,  'step': 0.1},
+    'Organic_carbon':  {'label': 'Organic Carbon',   'unit': 'mg/L',   'min': 0.0,   'max': 30.0,    'default': 14.0,   'step': 0.01},
+    'Trihalomethanes': {'label': 'Trihalomethanes',  'unit': 'μg/L',   'min': 0.0,   'max': 130.0,   'default': 66.0,   'step': 0.01},
+    'Turbidity':       {'label': 'Turbidity',        'unit': 'NTU',    'min': 0.0,   'max': 7.0,     'default': 3.9,    'step': 0.01},
+}
+
+THRESHOLDS = {
+    'ph':              {'min': 6.5,  'max': 8.5,   'unit': '',      'label': 'pH'},
+    'Hardness':        {'min': None, 'max': 300.0,  'unit': 'mg/L',  'label': 'Hardness'},
+    'Solids':          {'min': None, 'max': 500.0,  'unit': 'mg/L',  'label': 'Solids (TDS)'},
+    'Chloramines':     {'min': None, 'max': 4.0,    'unit': 'mg/L',  'label': 'Chloramines'},
+    'Sulfate':         {'min': None, 'max': 250.0,  'unit': 'mg/L',  'label': 'Sulfate'},
+    'Conductivity':    {'min': None, 'max': 400.0,  'unit': 'μS/cm', 'label': 'Conductivity'},
+    'Organic_carbon':  {'min': None, 'max': 2.0,    'unit': 'mg/L',  'label': 'Organic Carbon'},
+    'Trihalomethanes': {'min': None, 'max': 80.0,   'unit': 'μg/L',  'label': 'Trihalomethanes'},
+    'Turbidity':       {'min': None, 'max': 5.0,    'unit': 'NTU',   'label': 'Turbidity'},
+}
+
+# ─── Load model ──────────────────────────────────────────────────────────────
 @st.cache_resource
 def load_model():
-    model = joblib.load("best_model.pkl")
-    return model
+    try:
+        model = joblib.load('best_model.pkl')
+        with open('model_info.json') as f:
+            info = json.load(f)
+        return model, info
+    except FileNotFoundError:
+        return None, None
 
-@st.cache_resource
-def load_config():
-    with open("model_info.json", "r") as f:
-        config = json.load(f)
-    return config
+model, model_info = load_model()
 
-try:
-    model = load_model()
-    config = load_config()
-    features = config["fitur"]
-    thresholds = config["thresholds_rbds"]
-    best_model_name = config.get("nama_model", "Decision Tree")
-except Exception as e:
-    st.error(f"❌ Gagal memuat model atau konfigurasi: {str(e)}")
-    st.stop()
-
-# ============================================================
-# FUNGSI RBDS (Rule-Based Diagnostic System)
-# ============================================================
+# ─── RBDS ────────────────────────────────────────────────────────────────────
 def rbds_diagnose(sample: dict) -> list:
-    """
-    Rule-Based Diagnostic System (RBDS)
-    Memeriksa parameter yang melanggar baku mutu WHO/EPA
-    """
     anomalies = []
-    for param, rules in thresholds.items():
+    for param, rules in THRESHOLDS.items():
         val = sample.get(param)
         if val is None:
             continue
-        label = rules["label"]
-        unit = rules["unit"]
-
-        if rules.get("min") is not None and val < rules["min"]:
+        label = rules['label']
+        unit  = rules['unit']
+        if rules['min'] is not None and val < rules['min']:
             anomalies.append({
-                "parameter": label,
-                "nilai": round(val, 4),
-                "batas": f">= {rules['min']} {unit}".strip(),
-                "status": "DI BAWAH BATAS"
+                'Parameter': label,
+                'Nilai': round(val, 4),
+                'Batas Aman': f"≥ {rules['min']} {unit}".strip(),
+                'Status': '⬇ DI BAWAH BATAS'
             })
-        if rules.get("max") is not None and val > rules["max"]:
+        if rules['max'] is not None and val > rules['max']:
             anomalies.append({
-                "parameter": label,
-                "nilai": round(val, 4),
-                "batas": f"<= {rules['max']} {unit}".strip(),
-                "status": "MELEBIHI BATAS"
+                'Parameter': label,
+                'Nilai': round(val, 4),
+                'Batas Aman': f"≤ {rules['max']} {unit}".strip(),
+                'Status': '⬆ MELEBIHI BATAS'
             })
     return anomalies
 
+
 def predict_and_diagnose(sample: dict) -> dict:
-    """
-    Melakukan prediksi ML dan RBDS jika hasil = tidak layak
-    """
-    try:
-        input_df = pd.DataFrame([sample])[features]
-        prediction = model.predict(input_df)[0]
-        prob = model.predict_proba(input_df)[0]
+    input_df = pd.DataFrame([sample])[FEATURES]
+    prediction  = model.predict(input_df)[0]
+    probability = model.predict_proba(input_df)[0]
+    result = {
+        'label': int(prediction),
+        'prediksi': 'LAYAK' if prediction == 1 else 'TIDAK LAYAK',
+        'prob_layak': round(float(probability[1]), 4),
+        'prob_tidak': round(float(probability[0]), 4),
+        'anomali': []
+    }
+    if prediction == 0:
+        result['anomali'] = rbds_diagnose(sample)
+    return result
 
-        result = {
-            "prediksi": "LAYAK" if prediction == 1 else "TIDAK LAYAK",
-            "label": int(prediction),
-            "probabilitas_layak": round(float(prob[1]), 4),
-            "probabilitas_tidak_layak": round(float(prob[0]), 4),
-            "anomali": []
-        }
+# ─── Sidebar ─────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("## 💧 AquaCheck")
+    st.markdown("Sistem klasifikasi kelayakan air minum berbasis **Machine Learning + RBDS**.")
+    st.markdown("---")
 
-        if prediction == 0:
-            result["anomali"] = rbds_diagnose(sample)
+    mode = st.radio(
+        "Mode Analisis",
+        ["🔬 Prediksi Tunggal", "📂 Prediksi Batch (CSV)"],
+        index=0
+    )
 
-        return result
-    except Exception as e:
-        st.error(f"❌ Error saat prediksi: {str(e)}")
-        return None
+    st.markdown("---")
 
-# ============================================================
-# HEADER
-# ============================================================
-st.title("💧 Klasifikasi Kelayakan Air Minum")
-st.markdown(f"""
-<div style="background-color:#f0f8ff; padding:1rem; border-radius:10px; margin-bottom:1.5rem; border-left:5px solid #2E86C1;">
-    <p style="margin:0; font-size:1rem;">
-        🤖 <b>Model terbaik:</b> {best_model_name} &nbsp;|&nbsp; 
-        📊 <b>Mengacu pada standar:</b> WHO & EPA
-    </p>
-    <p style="margin:0.3rem 0 0 0; font-size:0.9rem; color:#555;">
-        Masukkan 9 parameter fisikokimia air untuk mengetahui kelayakan konsumsi
-    </p>
+    if model_info:
+        st.markdown("**Model Aktif**")
+        st.markdown(f"`{model_info.get('nama_model', 'Unknown')}`")
+    else:
+        st.warning("Model belum dimuat.\nPastikan `best_model.pkl` dan `model_info.json` ada di direktori yang sama.")
+
+    st.markdown("---")
+    st.markdown(
+        "<span style='font-size:0.75rem;color:#475569;'>"
+        "Sistem ini berfungsi sebagai alat skrining awal. "
+        "Bukan pengganti uji laboratorium bersertifikasi.</span>",
+        unsafe_allow_html=True
+    )
+
+# ─── Hero ─────────────────────────────────────────────────────────────────────
+st.markdown("""
+<div class="hero-banner">
+    <div style="font-size:2.8rem;">💧</div>
+    <div>
+        <h1>AquaCheck</h1>
+        <p>Klasifikasi kelayakan air minum berbasis Machine Learning &amp; Rule-Based Diagnostic System</p>
+    </div>
 </div>
 """, unsafe_allow_html=True)
 
-# ============================================================
-# INPUT PARAMETER - 3 Kolom
-# ============================================================
-st.subheader("📊 Masukkan Parameter Air")
-
-# Nilai default berdasarkan dataset
-default_values = {
-    "ph": 7.0,
-    "Hardness": 200.0,
-    "Solids": 20000.0,
-    "Chloramines": 7.0,
-    "Sulfate": 330.0,
-    "Conductivity": 400.0,
-    "Organic_carbon": 14.0,
-    "Trihalomethanes": 66.0,
-    "Turbidity": 4.0
-}
-
-# Informasi batas untuk tooltip
-info_batas = {
-    "ph": "Batas WHO: 6.5 – 8.5",
-    "Hardness": "Batas: ≤ 300 mg/L",
-    "Solids": "Batas: ≤ 500 mg/L (TDS)",
-    "Chloramines": "Batas: ≤ 4.0 mg/L",
-    "Sulfate": "Batas: ≤ 250 mg/L",
-    "Conductivity": "Batas: ≤ 400 μS/cm",
-    "Organic_carbon": "Batas: ≤ 2.0 mg/L (Karbon Organik Total)",
-    "Trihalomethanes": "Batas: ≤ 80 μg/L",
-    "Turbidity": "Batas: ≤ 5.0 NTU"
-}
-
-input_data = {}
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    input_data["ph"] = st.number_input(
-        "pH", 
-        value=default_values["ph"], 
-        format="%.4f",
-        help=info_batas["ph"],
-        step=0.1
+# ─── Model tidak ditemukan ───────────────────────────────────────────────────
+if model is None:
+    st.error(
+        "**Model tidak ditemukan.** "
+        "Pastikan file `best_model.pkl` dan `model_info.json` berada di direktori yang sama dengan `app.py`. "
+        "Jalankan notebook Colab terlebih dahulu untuk menghasilkan file tersebut."
     )
-    input_data["Hardness"] = st.number_input(
-        "Hardness (mg/L)", 
-        value=default_values["Hardness"], 
-        format="%.4f",
-        help=info_batas["Hardness"],
-        step=1.0
-    )
-    input_data["Solids"] = st.number_input(
-        "Solids / TDS (mg/L)", 
-        value=default_values["Solids"], 
-        format="%.4f",
-        help=info_batas["Solids"],
-        step=100.0
-    )
+    st.stop()
 
-with col2:
-    input_data["Chloramines"] = st.number_input(
-        "Chloramines (mg/L)", 
-        value=default_values["Chloramines"], 
-        format="%.4f",
-        help=info_batas["Chloramines"],
-        step=0.1
-    )
-    input_data["Sulfate"] = st.number_input(
-        "Sulfate (mg/L)", 
-        value=default_values["Sulfate"], 
-        format="%.4f",
-        help=info_batas["Sulfate"],
-        step=1.0
-    )
-    input_data["Conductivity"] = st.number_input(
-        "Conductivity (μS/cm)", 
-        value=default_values["Conductivity"], 
-        format="%.4f",
-        help=info_batas["Conductivity"],
-        step=1.0
-    )
+# ═════════════════════════════════════════════════════════════════════════════
+# MODE 1 — PREDIKSI TUNGGAL
+# ═════════════════════════════════════════════════════════════════════════════
+if mode == "🔬 Prediksi Tunggal":
 
-with col3:
-    input_data["Organic_carbon"] = st.number_input(
-        "Organic Carbon (mg/L)", 
-        value=default_values["Organic_carbon"], 
-        format="%.4f",
-        help=info_batas["Organic_carbon"],
-        step=0.1
-    )
-    input_data["Trihalomethanes"] = st.number_input(
-        "Trihalomethanes (μg/L)", 
-        value=default_values["Trihalomethanes"], 
-        format="%.4f",
-        help=info_batas["Trihalomethanes"],
-        step=1.0
-    )
-    input_data["Turbidity"] = st.number_input(
-        "Turbidity (NTU)", 
-        value=default_values["Turbidity"], 
-        format="%.4f",
-        help=info_batas["Turbidity"],
-        step=0.1
-    )
+    st.markdown('<div class="section-label">Input Parameter Fisikokimia</div>', unsafe_allow_html=True)
 
-# ============================================================
-# TOMBOL PREDIKSI
-# ============================================================
-st.markdown("---")
-col_btn, col_empty = st.columns([1, 3])
-with col_btn:
-    predict_btn = st.button("🔍 Prediksi Kelayakan", type="primary", use_container_width=True)
+    col1, col2, col3 = st.columns(3)
+    inputs = {}
 
-# ============================================================
-# HASIL PREDIKSI
-# ============================================================
-if predict_btn:
-    with st.spinner("⏳ Memproses data..."):
-        result = predict_and_diagnose(input_data)
+    param_list = list(FEATURE_META.items())
+    for i, (key, meta) in enumerate(param_list):
+        col = [col1, col2, col3][i % 3]
+        label_str = f"{meta['label']} ({meta['unit']})" if meta['unit'] else meta['label']
+        with col:
+            inputs[key] = st.number_input(
+                label_str,
+                min_value=float(meta['min']),
+                max_value=float(meta['max']),
+                value=float(meta['default']),
+                step=float(meta['step']),
+                format="%.4f",
+                key=key
+            )
 
-    if result is None:
-        st.stop()
+    st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.subheader("📋 Hasil Prediksi")
+    if st.button("🔍 Analisis Kualitas Air", use_container_width=True, type="primary"):
+        result = predict_and_diagnose(inputs)
 
-    # ======== STATUS UTAMA ========
-    col1, col2, col3 = st.columns([1, 1, 1])
-
-    with col1:
-        if result["prediksi"] == "LAYAK":
-            st.success("### ✅ LAYAK")
-            st.caption("Air aman untuk dikonsumsi")
+        # ── Hasil prediksi ──
+        if result['label'] == 1:
+            st.markdown(f"""
+            <div class="result-layak">
+                <h2>✅ Air LAYAK Dikonsumsi</h2>
+                <p>Model memprediksi sampel ini memenuhi standar kelayakan air minum.</p>
+            </div>
+            """, unsafe_allow_html=True)
         else:
-            st.error("### ❌ TIDAK LAYAK")
-            st.caption("Air tidak aman untuk dikonsumsi")
-
-    with col2:
-        st.metric(
-            "Probabilitas Layak",
-            f"{result['probabilitas_layak']:.2%}",
-            help="Semakin tinggi, semakin yakin model bahwa air layak"
-        )
-
-    with col3:
-        st.metric(
-            "Probabilitas Tidak Layak",
-            f"{result['probabilitas_tidak_layak']:.2%}",
-            help="Semakin tinggi, semakin yakin model bahwa air tidak layak"
-        )
-
-    # ======== PROGRESS BAR (Visualisasi Probabilitas) ========
-    st.subheader("📊 Visualisasi Probabilitas")
-    
-    prob_layak = result['probabilitas_layak']
-    prob_tidak = result['probabilitas_tidak_layak']
-    
-    # Warna berdasarkan probabilitas
-    if prob_layak >= 0.6:
-        color = "#28a745"  # Hijau
-        status_text = "🟢 Kemungkinan LAYAK"
-    elif prob_layak >= 0.4:
-        color = "#ffc107"  # Kuning
-        status_text = "🟡 Kemungkinan Ragu-ragu"
-    else:
-        color = "#dc3545"  # Merah
-        status_text = "🔴 Kemungkinan TIDAK LAYAK"
-    
-    # Progress bar custom dengan HTML/CSS
-    st.markdown(f"""
-    <div style="margin: 10px 0;">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-            <span style="font-weight: bold;">Probabilitas Layak</span>
-            <span style="font-weight: bold; color: {color};">{prob_layak:.1%}</span>
-        </div>
-        <div style="background-color: #e9ecef; border-radius: 10px; height: 30px; overflow: hidden; position: relative;">
-            <div style="background: linear-gradient(90deg, #dc3545, #ffc107, #28a745); 
-                        width: 100%; height: 100%; border-radius: 10px; opacity: 0.3;">
+            st.markdown(f"""
+            <div class="result-tidak">
+                <h2>⛔ Air TIDAK LAYAK Dikonsumsi</h2>
+                <p>Model memprediksi sampel ini tidak memenuhi standar kelayakan air minum.</p>
             </div>
-            <div style="background-color: {color}; 
-                        width: {prob_layak*100}%; height: 100%; 
-                        border-radius: 10px; 
-                        position: absolute; top: 0; left: 0;
-                        transition: width 0.5s ease;">
-            </div>
-            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-                        font-weight: bold; font-size: 14px; color: #333;">
-                {status_text}
-            </div>
-        </div>
-        <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 0.8rem; color: #666;">
-            <span>0% (Tidak Layak)</span>
-            <span>50%</span>
-            <span>100% (Layak)</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
-    # ======== TABEL PARAMETER INPUT ========
-    with st.expander("📋 Detail Parameter Input", expanded=False):
-        df_input = pd.DataFrame({
-            "Parameter": [thresholds[f]["label"] for f in features],
-            "Nilai": [input_data[f] for f in features],
-            "Satuan": [thresholds[f]["unit"] for f in features],
-            "Batas Minimum": [thresholds[f]["min"] if thresholds[f]["min"] is not None else "-" for f in features],
-            "Batas Maksimum": [thresholds[f]["max"] if thresholds[f]["max"] is not None else "-" for f in features]
-        })
-        st.dataframe(df_input, use_container_width=True, hide_index=True)
+        # ── Probabilitas ──
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(f"""
+            <div class="card">
+                <div class="card-title">Probabilitas Layak</div>
+                <div class="card-value" style="color:#16a34a;">{result['prob_layak']:.2%}</div>
+            </div>""", unsafe_allow_html=True)
+        with c2:
+            st.markdown(f"""
+            <div class="card">
+                <div class="card-title">Probabilitas Tidak Layak</div>
+                <div class="card-value" style="color:#dc2626;">{result['prob_tidak']:.2%}</div>
+            </div>""", unsafe_allow_html=True)
 
-    # ======== ANOMALI RBDS ========
-    if result["anomali"]:
-        st.warning(f"⚠️ Terdapat **{len(result['anomali'])}** parameter yang melanggar baku mutu!")
+        # ── RBDS Diagnostik ──
+        if result['label'] == 0:
+            st.markdown('<div class="section-label" style="margin-top:1.2rem;">Diagnostik RBDS — Parameter Anomali</div>', unsafe_allow_html=True)
 
-        df_anomali = pd.DataFrame(result["anomali"])
-        df_anomali = df_anomali.rename(columns={
-            "parameter": "Parameter",
-            "nilai": "Nilai",
-            "batas": "Batas Baku Mutu",
-            "status": "Status"
-        })
-        
-        # Tambahkan kolom status dengan warna
-        def color_status(status):
-            if status == "MELEBIHI BATAS":
-                return "🔴 MELEBIHI BATAS"
+            if result['anomali']:
+                st.markdown(
+                    "Parameter berikut melanggar ambang batas standar baku mutu WHO/EPA:",
+                    unsafe_allow_html=True
+                )
+                df_anomali = pd.DataFrame(result['anomali'])
+                st.dataframe(df_anomali, use_container_width=True, hide_index=True)
+
+                st.markdown('<div class="section-label" style="margin-top:0.8rem;">Ringkasan</div>', unsafe_allow_html=True)
+                tags_html = "".join(
+                    f'<span class="anomaly-tag">⚠ {a["Parameter"]}</span>'
+                    for a in result['anomali']
+                )
+                st.markdown(tags_html, unsafe_allow_html=True)
             else:
-                return "🟡 DI BAWAH BATAS"
-        
-        df_anomali["Status"] = df_anomali["Status"].apply(color_status)
-        st.dataframe(df_anomali, use_container_width=True, hide_index=True)
-        
-        # Tampilkan rekomendasi per parameter
-        st.markdown("**📝 Rekomendasi Penanganan:**")
-        for i, row in df_anomali.iterrows():
-            if "MELEBIHI BATAS" in row["Status"]:
-                st.write(f"- **{row['Parameter']}**: Nilai {row['Nilai']} melebihi batas maksimum {row['Batas Baku Mutu']}. Perlu dilakukan pengolahan untuk menurunkan kadar {row['Parameter']}.")
-            else:
-                st.write(f"- **{row['Parameter']}**: Nilai {row['Nilai']} di bawah batas minimum {row['Batas Baku Mutu']}. Perlu dilakukan pengolahan untuk menaikkan kadar {row['Parameter']}.")
-    else:
-        st.success("✅ Semua parameter dalam batas baku mutu air minum!")
+                st.info(
+                    "Meskipun model memprediksi air tidak layak, tidak ada parameter "
+                    "yang secara individual melanggar ambang batas baku mutu. "
+                    "Kemungkinan disebabkan oleh kombinasi parameter yang kompleks."
+                )
 
-    # ======== REKOMENDASI UMUM ========
-    with st.expander("💡 Rekomendasi & Informasi", expanded=False):
-        if result["prediksi"] == "LAYAK":
-            st.info("""
-            ### ✅ Air LAYAK Dikonsumsi
-            
-            **Rekomendasi:**
-            - ✅ Air dapat langsung dikonsumsi atau digunakan untuk kebutuhan rumah tangga
-            - ✅ Pastikan penyimpanan air bersih dan terlindung dari kontaminasi
-            - ✅ Lakukan pengujian berkala untuk memastikan kualitas tetap terjaga
-            """)
-        else:
-            st.error("""
-            ### ❌ Air TIDAK LAYAK Dikonsumsi
-            
-            **Rekomendasi Penanganan:**
-            
-            1. **Jangan mengonsumsi air ini secara langsung**
-            2. **Lakukan pengolahan air:**
-               - **Filtrasi** untuk menghilangkan partikel tersuspensi
-               - **Reverse Osmosis** untuk menurunkan kadar garam terlarut
-               - **Desinfeksi** (UV/Klorinasi) untuk membunuh mikroorganisme
-            3. **Lakukan pengujian ulang** setelah pengolahan
-            4. **Konsultasikan** dengan otoritas kesehatan setempat
-            """)
-
-    # ======== DISCLAIMER ========
-    st.markdown("---")
-    st.caption(
-        "⚠️ **Disclaimer**: Hasil prediksi bersifat indikatif dan "
-        "**tidak menggantikan** pengujian laboratorium resmi. "
-        "Konsultasikan dengan otoritas kesehatan untuk kepastian kelayakan air minum."
-    )
-
-else:
-    # ======== TAMPILAN AWAL ========
-    st.info("👆 Masukkan parameter air di atas, lalu klik **'Prediksi Kelayakan'**")
-    
-    # Tampilkan informasi singkat
-    with st.expander("📖 Tentang Sistem Ini", expanded=False):
         st.markdown("""
-        ### 💧 Sistem Klasifikasi Kelayakan Air Minum
-        
-        Aplikasi ini menggunakan **Machine Learning** dan **Rule-Based Diagnostic System (RBDS)** 
-        untuk mengklasifikasikan kelayakan air minum.
-        
-        **Parameter yang digunakan:**
-        - pH, Hardness, Solids (TDS), Chloramines, Sulfate
-        - Conductivity, Organic Carbon, Trihalomethanes, Turbidity
-        
-        **Standar Baku Mutu:**
-        Mengacu pada standar **WHO** (World Health Organization) dan **EPA** (Environmental Protection Agency).
-        
-        **Model Terbaik:** Decision Tree (F1-Score: 0.478)
-        """)
+        <div class="disclaimer">
+            ⚠️ <strong>Perhatian:</strong> Hasil prediksi ini merupakan skrining awal dan bukan pengganti 
+            analisis laboratorium bersertifikasi. Selalu lakukan verifikasi lebih lanjut sebelum mengambil 
+            keputusan terkait konsumsi air.
+        </div>
+        """, unsafe_allow_html=True)
 
-# ============================================================
-# FOOTER
-# ============================================================
-st.markdown("---")
-st.caption("💧 Sistem Klasifikasi Kelayakan Air Minum • Machine Learning + Rule-Based Diagnostic System")
+# ═════════════════════════════════════════════════════════════════════════════
+# MODE 2 — PREDIKSI BATCH
+# ═════════════════════════════════════════════════════════════════════════════
+else:
+    st.markdown('<div class="section-label">Upload File CSV</div>', unsafe_allow_html=True)
+    st.markdown(
+        "Upload file `.csv` dengan kolom: "
+        "`ph, Hardness, Solids, Chloramines, Sulfate, Conductivity, Organic_carbon, Trihalomethanes, Turbidity`"
+    )
+
+    # Template download
+    template_df = pd.DataFrame([{k: FEATURE_META[k]['default'] for k in FEATURES}])
+    csv_template = template_df.to_csv(index=False)
+    st.download_button(
+        "⬇ Download Template CSV",
+        data=csv_template,
+        file_name="template_input.csv",
+        mime="text/csv"
+    )
+
+    uploaded = st.file_uploader("Pilih file CSV", type=["csv"])
+
+    if uploaded is not None:
+        try:
+            df_input = pd.read_csv(uploaded)
+
+            # Validasi kolom
+            missing_cols = [c for c in FEATURES if c not in df_input.columns]
+            if missing_cols:
+                st.error(f"Kolom tidak ditemukan: {missing_cols}")
+                st.stop()
+
+            st.success(f"✅ File berhasil dimuat — **{len(df_input)} sampel** terdeteksi.")
+            st.markdown('<div class="section-label">Preview Data</div>', unsafe_allow_html=True)
+            st.dataframe(df_input[FEATURES].head(5), use_container_width=True, hide_index=True)
+
+            if st.button("🔍 Proses Semua Sampel", use_container_width=True, type="primary"):
+                with st.spinner("Memproses..."):
+                    results = []
+                    for _, row in df_input[FEATURES].iterrows():
+                        res = predict_and_diagnose(row.to_dict())
+                        anomali_params = ", ".join(a['Parameter'] for a in res['anomali']) if res['anomali'] else "-"
+                        results.append({
+                            'Prediksi':           res['prediksi'],
+                            'Prob. Layak':        f"{res['prob_layak']:.4f}",
+                            'Prob. Tidak Layak':  f"{res['prob_tidak']:.4f}",
+                            'Parameter Anomali':  anomali_params,
+                        })
+
+                    df_result = pd.concat([df_input[FEATURES].reset_index(drop=True),
+                                           pd.DataFrame(results)], axis=1)
+
+                # ── Summary metrics ──
+                n_layak  = (df_input.assign(pred=[r['Prediksi'] for r in results])['pred'] == 'LAYAK').sum()
+                n_tidak  = len(results) - n_layak
+
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Total Sampel", len(results))
+                c2.metric("✅ Layak", n_layak, f"{n_layak/len(results):.1%}")
+                c3.metric("⛔ Tidak Layak", n_tidak, f"{n_tidak/len(results):.1%}")
+
+                st.markdown('<div class="section-label" style="margin-top:1rem;">Hasil Prediksi</div>', unsafe_allow_html=True)
+                st.dataframe(df_result, use_container_width=True, hide_index=True)
+
+                # Download hasil
+                csv_result = df_result.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    "⬇ Download Hasil (CSV)",
+                    data=csv_result,
+                    file_name="hasil_prediksi.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+
+        except Exception as e:
+            st.error(f"Terjadi kesalahan saat memproses file: {e}")
