@@ -259,7 +259,8 @@ with st.sidebar:
 
     if model_info:
         st.markdown("**Model Aktif**")
-        st.markdown(f"`{model_info.get('nama_model', 'Unknown')}`")
+        # Ubah nama model menjadi Random Forest
+        st.markdown(f"`Random Forest`")
     else:
         st.warning("Model belum dimuat.\nPastikan `best_model.pkl` dan `model_info.json` ada di direktori yang sama.")
 
