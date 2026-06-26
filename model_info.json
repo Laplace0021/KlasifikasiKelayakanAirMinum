@@ -1,0 +1,70 @@
+{
+  "nama_model": "Decision Tree",
+  "fitur": [
+    "ph",
+    "Hardness",
+    "Solids",
+    "Chloramines",
+    "Sulfate",
+    "Conductivity",
+    "Organic_carbon",
+    "Trihalomethanes",
+    "Turbidity"
+  ],
+  "thresholds_rbds": {
+    "ph": {
+      "min": 6.5,
+      "max": 8.5,
+      "unit": "",
+      "label": "pH"
+    },
+    "Hardness": {
+      "min": null,
+      "max": 300.0,
+      "unit": "mg/L",
+      "label": "Hardness"
+    },
+    "Solids": {
+      "min": null,
+      "max": 500.0,
+      "unit": "mg/L",
+      "label": "Solids (TDS)"
+    },
+    "Chloramines": {
+      "min": null,
+      "max": 4.0,
+      "unit": "mg/L",
+      "label": "Chloramines"
+    },
+    "Sulfate": {
+      "min": null,
+      "max": 250.0,
+      "unit": "mg/L",
+      "label": "Sulfate"
+    },
+    "Conductivity": {
+      "min": null,
+      "max": 400.0,
+      "unit": "\u03bcS/cm",
+      "label": "Conductivity"
+    },
+    "Organic_carbon": {
+      "min": null,
+      "max": 2.0,
+      "unit": "mg/L",
+      "label": "Organic Carbon"
+    },
+    "Trihalomethanes": {
+      "min": null,
+      "max": 80.0,
+      "unit": "\u03bcg/L",
+      "label": "Trihalomethanes"
+    },
+    "Turbidity": {
+      "min": null,
+      "max": 5.0,
+      "unit": "NTU",
+      "label": "Turbidity"
+    }
+  }
+}
