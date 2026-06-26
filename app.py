@@ -57,7 +57,7 @@ def rbds_diagnose(sample: dict) -> list:
             anomalies.append({
                 "parameter": label,
                 "nilai": round(val, 4),
-                "batas": f"≥ {rules['min']} {unit}".strip(),
+                "batas": f">= {rules['min']} {unit}".strip(),
                 "status": "DI BAWAH BATAS",
                 "rekomendasi": f"Tingkatkan {label} hingga minimal {rules['min']} {unit}"
             })
@@ -65,7 +65,7 @@ def rbds_diagnose(sample: dict) -> list:
             anomalies.append({
                 "parameter": label,
                 "nilai": round(val, 4),
-                "batas": f"≤ {rules['max']} {unit}".strip(),
+                "batas": f"<= {rules['max']} {unit}".strip(),
                 "status": "MELEBIHI BATAS",
                 "rekomendasi": f"Turunkan {label} hingga maksimal {rules['max']} {unit}"
             })
@@ -96,18 +96,21 @@ def predict_and_diagnose(sample: dict) -> dict:
 # HEADER
 # ============================================================
 st.title("💧 Sistem Klasifikasi Kelayakan Air Minum")
-st.markdown("""
-<div style="background-color:#f0f2f6; padding:1rem; border-radius:10px; margin-bottom:1.5rem;">
-    <p style="margin:0; font-size:1.1rem;">
-        Aplikasi ini mengimplementasikan <b>Machine Learning</b> dan 
-        <b>Rule-Based Diagnostic System (RBDS)</b> untuk mengklasifikasikan 
-        kelayakan air minum berdasarkan parameter fisikokimia.
-    </p>
-    <p style="margin:0.5rem 0 0 0; font-size:0.9rem; color:#555;">
-        🤖 Model terbaik: <b>{}</b> • 📊 Mengacu pada standar WHO/EPA
-    </p>
-</div>
-""".format(best_model_name), unsafe_allow_html=True)
+st.markdown(
+    f"""
+    <div style="background-color:#f0f2f6; padding:1rem; border-radius:10px; margin-bottom:1.5rem;">
+        <p style="margin:0; font-size:1.1rem;">
+            Aplikasi ini mengimplementasikan <b>Machine Learning</b> dan 
+            <b>Rule-Based Diagnostic System (RBDS)</b> untuk mengklasifikasikan 
+            kelayakan air minum berdasarkan parameter fisikokimia.
+        </p>
+        <p style="margin:0.5rem 0 0 0; font-size:0.9rem; color:#555;">
+            🤖 Model terbaik: <b>{best_model_name}</b> • 📊 Mengacu pada standar WHO/EPA
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 # ============================================================
 # METODOLOGI RINGKAS (Collapsible)
@@ -167,14 +170,14 @@ default_values = {
 # Informasi batas untuk tooltip
 info_batas = {
     "ph": "Batas WHO: 6.5 – 8.5",
-    "Hardness": "Batas: ≤ 300 mg/L",
-    "Solids": "Batas: ≤ 500 mg/L (TDS)",
-    "Chloramines": "Batas: ≤ 4.0 mg/L",
-    "Sulfate": "Batas: ≤ 250 mg/L",
-    "Conductivity": "Batas: ≤ 400 μS/cm",
-    "Organic_carbon": "Batas: ≤ 2.0 mg/L",
-    "Trihalomethanes": "Batas: ≤ 80 μg/L",
-    "Turbidity": "Batas: ≤ 5.0 NTU"
+    "Hardness": "Batas: <= 300 mg/L",
+    "Solids": "Batas: <= 500 mg/L (TDS)",
+    "Chloramines": "Batas: <= 4.0 mg/L",
+    "Sulfate": "Batas: <= 250 mg/L",
+    "Conductivity": "Batas: <= 400 μS/cm",
+    "Organic_carbon": "Batas: <= 2.0 mg/L",
+    "Trihalomethanes": "Batas: <= 80 μg/L",
+    "Turbidity": "Batas: <= 5.0 NTU"
 }
 
 col1, col2 = st.sidebar.columns(2)
@@ -301,23 +304,27 @@ if predict_btn:
 
     with col_info:
         if result["prediksi"] == "LAYAK":
-            st.success("""
-            ### ✅ Air LAYAK Dikonsumsi
-            
-            Model Machine Learning memprediksi bahwa air ini **LAYAK** 
-            untuk dikonsumsi berdasarkan parameter fisikokimia yang diinput.
-            
-            **Probabilitas layak:** {:.2%}
-            """.format(result['probabilitas_layak']))
+            st.success(
+                f"""
+                ### ✅ Air LAYAK Dikonsumsi
+                
+                Model Machine Learning memprediksi bahwa air ini **LAYAK** 
+                untuk dikonsumsi berdasarkan parameter fisikokimia yang diinput.
+                
+                **Probabilitas layak:** {result['probabilitas_layak']:.2%}
+                """
+            )
         else:
-            st.error("""
-            ### ❌ Air TIDAK LAYAK Dikonsumsi
-            
-            Model Machine Learning memprediksi bahwa air ini **TIDAK LAYAK** 
-            untuk dikonsumsi berdasarkan parameter fisikokimia yang diinput.
-            
-            **Probabilitas tidak layak:** {:.2%}
-            """.format(result['probabilitas_tidak_layak']))
+            st.error(
+                f"""
+                ### ❌ Air TIDAK LAYAK Dikonsumsi
+                
+                Model Machine Learning memprediksi bahwa air ini **TIDAK LAYAK** 
+                untuk dikonsumsi berdasarkan parameter fisikokimia yang diinput.
+                
+                **Probabilitas tidak layak:** {result['probabilitas_tidak_layak']:.2%}
+                """
+            )
 
     # ======== PARAMETER INPUT ========
     with st.expander("📋 Detail Parameter Input", expanded=True):
@@ -328,15 +335,6 @@ if predict_btn:
             "Batas Minimum": [thresholds[f]["min"] if thresholds[f]["min"] is not None else "-" for f in features],
             "Batas Maksimum": [thresholds[f]["max"] if thresholds[f]["max"] is not None else "-" for f in features]
         })
-        
-        # Warna berdasarkan status
-        def color_cell(val, param_name, sample):
-            rules = thresholds[param_name]
-            if rules["min"] is not None and val < rules["min"]:
-                return "background-color: #F1948A"
-            if rules["max"] is not None and val > rules["max"]:
-                return "background-color: #F1948A"
-            return ""
         
         st.dataframe(df_input, use_container_width=True, hide_index=True)
 
@@ -411,15 +409,15 @@ if predict_btn:
             if result["anomali"]:
                 st.write("**Prioritas Penanganan Parameter:**")
                 for i, a in enumerate(result["anomali"], 1):
-                    st.write(f"{i}. **{a['parameter']}**: {a['nilai']} (batas: {a['batas']}) → {a['rekomendasi']}")
+                    st.write(f"{i}. **{a['parameter']}**: {a['nilai']} (batas: {a['batas']}) -> {a['rekomendasi']}")
 
     # ======== DISCLAIMER ========
     st.markdown("---")
-    st.caption("""
-    ⚠️ **Disclaimer**: Aplikasi ini bersifat demonstratif untuk tujuan edukasi dan penelitian. 
-    Hasil prediksi dan diagnosa **tidak menggantikan** pengujian laboratorium resmi. 
-    Selalu konsultasikan dengan otoritas kesehatan setempat untuk penentuan kelayakan air minum yang akurat.
-    """)
+    st.caption(
+        "⚠️ **Disclaimer**: Aplikasi ini bersifat demonstratif untuk tujuan edukasi dan penelitian. "
+        "Hasil prediksi dan diagnosa **tidak menggantikan** pengujian laboratorium resmi. "
+        "Selalu konsultasikan dengan otoritas kesehatan setempat untuk penentuan kelayakan air minum yang akurat."
+    )
 
 else:
     # ======== TAMPILAN AWAL ========
